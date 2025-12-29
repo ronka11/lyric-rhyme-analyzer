@@ -4,7 +4,6 @@ from pydantic import BaseModel
 import re
 from collections import defaultdict
 from typing import Dict, List, Optional, Any, Set
-import random
 import pronouncing
 from functools import lru_cache
 
@@ -32,8 +31,8 @@ class Song:
         self.lyrics = lyrics
         self.lines_with_punctuation = lyrics.split('\n')
         self.tokenized_lyrics = self.tokenize_lyrics(self.lyrics)
-        # Minimal blacklist - only articles and very common words
-        self.blacklist = {"a", "the", "an", "and", "or"}
+        # Minimal blacklist - articles and very common connectors
+        self.blacklist = {"a", "the", "an", "and", "or", "of", "to", "in", "it", "is"}
         self.word_to_rhyme_group = {}
         self.rhyme_groups = self.detect_rhymes_syllable_based(self.tokenized_lyrics)
 
@@ -57,8 +56,28 @@ class Song:
 
     @lru_cache(maxsize=10000)
     def get_phonetic_code(self, word: str) -> str:
+        """Get pronunciation, with fallback for common suffixes"""
         pronunciations = pronouncing.phones_for_word(word)
-        return pronunciations[0] if pronunciations else ''
+        if pronunciations:
+            return pronunciations[0]
+            
+        # Fallback: Try removing common suffixes if word not found
+        if word.endswith("s") and len(word) > 3:
+            root = word[:-1]
+            root_phones = pronouncing.phones_for_word(root)
+            if root_phones: return root_phones[0] + " Z" # Approximate plural
+            
+        if word.endswith("ing") and len(word) > 5:
+            root = word[:-3]
+            root_phones = pronouncing.phones_for_word(root)
+            if root_phones: return root_phones[0] + " IH0 NG"
+            
+        if word.endswith("ed") and len(word) > 4:
+            root = word[:-2]
+            root_phones = pronouncing.phones_for_word(root)
+            if root_phones: return root_phones[0] + " D"
+
+        return ''
 
     def get_syllables(self, word: str) -> List[str]:
         """Get individual syllables from a word"""
@@ -77,7 +96,7 @@ class Song:
                 syllables.append(' '.join(current_syllable))
                 current_syllable = []
         
-        # Add remaining phonemes if any
+        # Add remaining phonemes (coda) to the last syllable
         if current_syllable:
             if syllables:
                 syllables[-1] += ' ' + ' '.join(current_syllable)
@@ -87,7 +106,7 @@ class Song:
         return syllables
     
     def split_word_by_syllables(self, word: str) -> List[str]:
-        """Split a word into its syllable strings (approximate)"""
+        """Split a word into its syllable strings (visual approximation)"""
         syllables = self.get_syllables(word)
         if not syllables or len(syllables) <= 1:
             return [word]
@@ -96,7 +115,6 @@ class Song:
         word_len = len(word)
         num_syllables = len(syllables)
         
-        # Simple heuristic: divide word length by syllable count
         chars_per_syllable = word_len / num_syllables
         
         syllable_strings = []
@@ -107,42 +125,62 @@ class Song:
                 syllable_strings.append(word[start:])
             else:
                 end = int((i + 1) * chars_per_syllable)
+                # Ensure we don't have empty slices if math gets weird on short words
+                if end <= start: end = start + 1
                 syllable_strings.append(word[start:end])
                 start = end
         
         return syllable_strings
 
-    def get_rhyming_part(self, syllable: str) -> str:
-        """Get the rhyming part of a syllable (from vowel onwards)"""
-        phonemes = syllable.split()
-        # Find first vowel (has stress marker)
-        for i, phoneme in enumerate(phonemes):
-            if any(stress in phoneme for stress in ['0', '1', '2']):
-                return ' '.join(phonemes[i:])
-        return syllable
-
-    def syllables_rhyme(self, word1: str, word2: str) -> List[tuple]:
-        """Find which syllables rhyme between two words"""
-        syllables1 = self.get_syllables(word1)
-        syllables2 = self.get_syllables(word2)
+    def get_rhyme_signature(self, syllable_phonemes: str) -> str:
+        """
+        Creates a 'fuzzy' rhyme signature to allow slant rhymes.
+        Groups similar sounding consonants together.
+        Example: 'IY1 M' (Dream) and 'IY1 N' (Green) -> Both become 'IY1-N' group
+        """
+        phonemes = syllable_phonemes.split()
         
-        if not syllables1 or not syllables2:
-            return []
+        # 1. Identify the Vowel (Nucleus)
+        vowel_index = -1
+        vowel_sound = ""
+        for i, p in enumerate(phonemes):
+            if any(char.isdigit() for char in p):
+                vowel_index = i
+                vowel_sound = p # e.g., 'AA1'
+                break
         
-        rhyming_pairs = []
+        if vowel_index == -1:
+            return syllable_phonemes # No vowel found, return strictly
+            
+        # 2. Process the Coda (sound after vowel)
+        coda_phonemes = phonemes[vowel_index + 1:]
         
-        # Check each syllable in word1 against each in word2
-        for i, syl1 in enumerate(syllables1):
-            rhyme1 = self.get_rhyming_part(syl1)
-            for j, syl2 in enumerate(syllables2):
-                rhyme2 = self.get_rhyming_part(syl2)
-                if rhyme1 and rhyme2 and rhyme1 == rhyme2:
-                    rhyming_pairs.append(((word1, i), (word2, j)))
-        
-        return rhyming_pairs
+        # 3. Create a simplified Coda signature
+        # We map similar sounding consonants to a single representative class
+        normalized_coda = []
+        for p in coda_phonemes:
+            # Nasals (M, N, NG) -> N
+            if p in ['M', 'N', 'NG']:
+                normalized_coda.append('N')
+            # Sibilants (S, Z, SH, ZH) -> S
+            elif p in ['S', 'Z', 'SH', 'ZH', 'CH', 'JH']:
+                normalized_coda.append('S')
+            # Plosives (P, B, T, D, K, G) -> P (Soft rhyme class)
+            elif p in ['P', 'B', 'T', 'D', 'K', 'G']:
+                normalized_coda.append('P')
+            # Fricatives (F, V) -> F
+            elif p in ['F', 'V']:
+                normalized_coda.append('F')
+            # Liquids (L, R) -> L
+            elif p in ['L', 'R', 'ER0', 'ER1']:
+                normalized_coda.append('L')
+            else:
+                normalized_coda.append(p)
+                
+        return f"{vowel_sound}-{''.join(normalized_coda)}"
 
     def detect_rhymes_syllable_based(self, tokenized_lyrics: List[List[Dict[str, str]]]) -> Dict[str, List[tuple]]:
-        """Detect rhymes at syllable level"""
+        """Detect rhymes at syllable level using Slant Rhyme logic"""
         all_words = []
         for line in tokenized_lyrics:
             for token in line:
@@ -150,37 +188,34 @@ class Song:
                 if word not in self.blacklist and len(word) > 1:
                     all_words.append(word)
         
-        # Keep ALL words including duplicates for better rhyme detection
-        
         # Find all syllable-level rhymes
         syllable_rhyme_groups = defaultdict(list)
         
         for i, word1 in enumerate(all_words):
             syllables1 = self.get_syllables(word1)
             for syl_idx1, syl1 in enumerate(syllables1):
-                rhyme_part1 = self.get_rhyming_part(syl1)
-                if not rhyme_part1:
-                    continue
+                # Use the new Slant Rhyme Signature
+                rhyme_sig1 = self.get_rhyme_signature(syl1)
                 
-                # Check against ALL other words (not just after current)
+                # Check against ALL other words
                 for j, word2 in enumerate(all_words):
-                    if i == j:  # Skip same instance
-                        continue
+                    if i == j: continue # Skip same instance
                         
                     syllables2 = self.get_syllables(word2)
                     for syl_idx2, syl2 in enumerate(syllables2):
-                        rhyme_part2 = self.get_rhyming_part(syl2)
-                        if rhyme_part1 == rhyme_part2:
-                            syllable_rhyme_groups[rhyme_part1].append((word1, syl_idx1))
-                            syllable_rhyme_groups[rhyme_part1].append((word2, syl_idx2))
+                        rhyme_sig2 = self.get_rhyme_signature(syl2)
+                        
+                        if rhyme_sig1 == rhyme_sig2:
+                            syllable_rhyme_groups[rhyme_sig1].append((word1, syl_idx1))
+                            syllable_rhyme_groups[rhyme_sig1].append((word2, syl_idx2))
         
-        # Remove exact duplicates but keep multiple instances of same word
+        # Filter groups
         filtered_groups = {}
         for rhyme_part, syllables in syllable_rhyme_groups.items():
             # Remove exact duplicate tuples
             unique_syllables = list(set(syllables))
             
-            # Check if multiple unique words
+            # Check if multiple unique words exist in this group
             unique_words_in_group = set(word for word, _ in unique_syllables)
             if len(unique_words_in_group) >= 2:
                 filtered_groups[rhyme_part] = unique_syllables
@@ -193,6 +228,30 @@ class Song:
         return filtered_groups
 
     def assign_colors(self, rhyme_groups: Dict[str, List[tuple]]) -> Dict[str, str]:
+        # Updated Pastel / Less Neon Palette
+        color_palette = [
+            "#FCD34D", # Soft Amber
+            "#F472B6", # Muted Pink
+            "#67E8F9", # Soft Cyan
+            "#FB7185", # Soft Rose
+            "#86EFAC", # Pastel Green
+            "#A78BFA", # Soft Purple
+            "#FDA4AF", # Light Pink
+            "#5EEAD4", # Teal
+            "#FDBA74", # Soft Orange
+            "#93C5FD", # Pastel Blue
+            "#C4B5FD", # Light Violet
+            "#818CF8", # Indigo
+            "#34D399", # Emerald
+            "#F87171", # Red-Orange
+            "#2DD4BF", # Muted Turquoise
+            "#E879F9", # Orchid
+            "#A3E635", # Lime
+            "#38BDF8", # Sky Blue
+            "#FB923C", # Orange
+            "#E2E8F0", # Slate
+        ]
+
         color_palette = [
             "#FFFF00",  # Yellow
             "#FF1493",  # Deep pink/Magenta
@@ -216,8 +275,11 @@ class Song:
             "#00BFFF",  # Deep sky blue
         ]
         
+        # Sort groups by frequency (most common rhymes get first colors)
+        sorted_groups = sorted(rhyme_groups.keys(), key=lambda k: len(rhyme_groups[k]), reverse=True)
+        
         colors = {}
-        for idx, group_key in enumerate(rhyme_groups.keys()):
+        for idx, group_key in enumerate(sorted_groups):
             colors[group_key] = color_palette[idx % len(color_palette)]
         
         return colors
@@ -245,13 +307,15 @@ class Song:
             syllables = self.get_syllables(last_word)
             found_rhyme = False
             
-            for syl_idx in range(len(syllables)):
+            # Prioritize the LAST syllable for scheme detection
+            for syl_idx in range(len(syllables) - 1, -1, -1):
                 if (last_word, syl_idx) in self.word_to_rhyme_group:
                     group_key = self.word_to_rhyme_group[(last_word, syl_idx)]
                     
                     if group_key not in line_to_letter:
                         line_to_letter[group_key] = chr(current_letter)
                         current_letter += 1
+                        if current_letter > ord('Z'): current_letter = ord('A') # Reset if Z exceeded
                     
                     scheme.append(line_to_letter[group_key])
                     found_rhyme = True
@@ -295,7 +359,7 @@ class Song:
                 highlighted_line.append({
                     "word": display_word,
                     "punct": punct,
-                    "syllable_parts": syllable_parts  # Each syllable with its own color
+                    "syllable_parts": syllable_parts
                 })
             
             highlighted_lyrics.append(highlighted_line)

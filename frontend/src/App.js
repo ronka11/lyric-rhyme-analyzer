@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Moon, Sun, Music, Sparkles } from 'lucide-react';
+import { Search, Sparkles, AlertCircle, X, Moon, Sun } from 'lucide-react';
 
 const LyricsAnalyzer = () => {
   const [darkMode, setDarkMode] = useState(true);
@@ -15,11 +15,7 @@ const LyricsAnalyzer = () => {
     const response = await fetch(
       `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artistName)}&track_name=${encodeURIComponent(songTitle)}`
     );
-    
-    if (!response.ok) {
-      throw new Error('Song not found in LRCLIB database');
-    }
-    
+    if (!response.ok) throw new Error('Track not found in database');
     const data = await response.json();
     return data.plainLyrics || data.syncedLyrics?.replace(/\[\d+:\d+\.\d+\]/g, '') || '';
   };
@@ -27,199 +23,146 @@ const LyricsAnalyzer = () => {
   const analyzeLyrics = async (lyrics) => {
     const response = await fetch(`${API_URL}/analyze`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lyrics }),
     });
-    
-    if (!response.ok) {
-      throw new Error('Failed to analyze lyrics');
-    }
-    
+    if (!response.ok) throw new Error('Analysis service unavailable');
     return await response.json();
   };
 
   const handleAnalyze = async () => {
     if (!songTitle.trim() || !artistName.trim()) {
-      setError('Please enter both song title and artist name');
+      setError('Enter both fields to begin');
       return;
     }
-
     setLoading(true);
     setError('');
     setAnalysisData(null);
-
     try {
       const lyrics = await fetchLyrics();
-      
-      if (!lyrics || lyrics.trim().length === 0) {
-        throw new Error('No lyrics found for this song');
-      }
-
       const analysis = await analyzeLyrics(lyrics);
       setAnalysisData(analysis);
     } catch (err) {
-      setError(err.message || 'An error occurred');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleAnalyze();
-    }
+  const handleKeyPress = (e) => { if (e.key === 'Enter') handleAnalyze(); };
+
+  // --- Theme Configuration ---
+  const theme = {
+    bg: darkMode ? 'bg-[#09090B]' : 'bg-[#FAFAFA]',
+    text: darkMode ? 'text-zinc-400' : 'text-zinc-600',
+    heading: darkMode ? 'text-zinc-100' : 'text-zinc-900',
+    border: darkMode ? 'border-zinc-800' : 'border-zinc-200',
+    card: darkMode ? 'bg-zinc-900/40' : 'bg-white',
+    input: darkMode ? 'bg-zinc-900/60' : 'bg-white',
+    scheme: darkMode ? 'text-zinc-600' : 'text-zinc-400',
   };
 
-  const bgColor = darkMode ? 'bg-[#0a0a0a]' : 'bg-gray-50';
-  const cardBg = darkMode ? 'bg-[#1a1a1a]' : 'bg-white';
-  const textColor = darkMode ? 'text-gray-100' : 'text-gray-900';
-  const textSecondary = darkMode ? 'text-gray-500' : 'text-gray-600';
-  const borderColor = darkMode ? 'border-gray-800' : 'border-gray-200';
-  const inputBg = darkMode ? 'bg-[#2a2a2a]' : 'bg-gray-100';
-
   return (
-    <div className={`min-h-screen ${bgColor} ${textColor} transition-colors duration-300`}>
-      {/* Header */}
-      <div className={`${cardBg} border-b ${borderColor} sticky top-0 z-50 backdrop-blur-lg bg-opacity-95`}>
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg">
-              <Music className="w-6 h-6 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Lyrics Rhyme Analyzer
-            </h1>
-          </div>
-          <button
+    <div className={`min-h-screen ${theme.bg} ${theme.text} transition-colors duration-500`}>
+      {/* Premium Typography: Geist Sans & Geist Mono */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap');
+        body { font-family: 'Geist', sans-serif; letter-spacing: -0.01em; }
+        .mono { font-family: 'Geist Mono', monospace; }
+      `}</style>
+
+      {/* Nav */}
+      <nav className={`border-b ${theme.border} sticky top-0 z-50 backdrop-blur-xl transition-colors`}>
+        <div className="max-w-5xl mx-auto px-8 h-14 flex items-center justify-between">
+          <span className={`text-[11px] mono uppercase tracking-[0.2em] font-semibold ${theme.heading}`}>
+            Rhyme Engine <span className="text-zinc-500 opacity-50">v2.0</span>
+          </span>
+          <button 
             onClick={() => setDarkMode(!darkMode)}
-            className={`p-2 rounded-lg ${inputBg} hover:opacity-80 transition-opacity`}
+            className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-200'}`}
           >
-            {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
-      </div>
+      </nav>
 
-      {/* Main Content */}
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Search Section */}
-        <div className={`${cardBg} rounded-xl p-6 shadow-2xl mb-8 border ${borderColor}`}>
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${textSecondary}`}>
-                Song Title
-              </label>
-              <input
-                type="text"
-                value={songTitle}
-                onChange={(e) => setSongTitle(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Enter song title..."
-                className={`w-full px-4 py-3 rounded-lg ${inputBg} ${textColor} border ${borderColor} focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all`}
-              />
-            </div>
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${textSecondary}`}>
-                Artist Name
-              </label>
-              <input
-                type="text"
-                value={artistName}
-                onChange={(e) => setArtistName(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Enter artist name..."
-                className={`w-full px-4 py-3 rounded-lg ${inputBg} ${textColor} border ${borderColor} focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all`}
-              />
-            </div>
+      <main className="max-w-5xl mx-auto px-8 py-12">
+        {/* Input Bar - Focused & Minimal */}
+        <div className="max-w-2xl mx-auto mb-16">
+          <div className={`flex flex-col sm:flex-row gap-0 border ${theme.border} rounded-xl overflow-hidden shadow-sm transition-all focus-within:ring-1 focus-within:ring-zinc-500`}>
+            <input 
+              className={`flex-1 ${theme.input} p-4 text-sm outline-none border-b sm:border-b-0 sm:border-r ${theme.border} ${theme.heading}`}
+              placeholder="Track Title" 
+              value={songTitle}
+              onChange={(e) => setSongTitle(e.target.value)}
+              onKeyDown={handleKeyPress}
+            />
+            <input 
+              className={`flex-1 ${theme.input} p-4 text-sm outline-none ${theme.heading}`}
+              placeholder="Artist" 
+              value={artistName}
+              onChange={(e) => setArtistName(e.target.value)}
+              onKeyDown={handleKeyPress}
+            />
+            <button 
+              onClick={handleAnalyze}
+              disabled={loading}
+              className={`px-8 py-4 text-sm font-medium transition-all ${darkMode ? 'bg-zinc-100 text-zinc-900 hover:bg-white' : 'bg-zinc-900 text-white hover:bg-black'} disabled:opacity-50`}
+            >
+              {loading ? '...' : 'Analyze'}
+            </button>
           </div>
-          <button
-            onClick={handleAnalyze}
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white font-medium py-3 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg"
-          >
-            {loading ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-5 h-5" />
-                Analyze Lyrics
-              </>
-            )}
-          </button>
+          {error && <p className="mt-4 text-xs text-red-500 text-center mono">{error}</p>}
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-500 bg-opacity-10 border border-red-500 rounded-lg p-4 mb-8">
-            <p className="text-red-500">{error}</p>
-          </div>
-        )}
+        {/* Results - WIDER WINDOW */}
+        {analysisData ? (
+          <div className="animate-in fade-in duration-1000">
+            <header className="mb-12 border-b border-zinc-800/10 pb-6 flex justify-between items-end">
+              <div>
+                <h2 className={`text-2xl font-medium ${theme.heading}`}>{songTitle}</h2>
+                <p className="text-sm opacity-60">{artistName}</p>
+              </div>
+              <div className="text-[10px] mono uppercase tracking-widest opacity-40">Phonetic Scheme</div>
+            </header>
 
-        {/* Results - Only Lyrics */}
-        {analysisData && (
-          <div className={`${cardBg} rounded-xl p-8 shadow-2xl border ${borderColor}`}>
-            <div className="flex items-center gap-2 mb-6">
-              <Music className="w-5 h-5 text-purple-500" />
-              <h2 className="text-xl font-bold">Highlighted Lyrics</h2>
-            </div>
-            <div className="space-y-2">
+            <div className="space-y-4">
               {analysisData.highlighted_lyrics.map((line, lineIdx) => (
-                <div key={lineIdx} className="flex items-start gap-4 group">
-                  <span 
-                    className={`${textSecondary} text-xs font-bold min-w-[35px] text-right pt-1.5 transition-colors group-hover:text-purple-400`}
-                    style={{
-                      fontFamily: 'monospace'
-                    }}
-                  >
-                    {analysisData.rhyme_scheme[lineIdx] || '-'}
-                  </span>
-                  <div className="flex flex-wrap gap-x-2 flex-1" style={{ lineHeight: '1.8' }}>
+                <div key={lineIdx} className="flex gap-8 group transition-all">
+                  {/* Scheme Indicator */}
+                  <div className={`w-6 text-right shrink-0 select-none pt-1`}>
+                    <span className={`text-[10px] mono font-bold ${theme.scheme} opacity-40 group-hover:opacity-100 transition-opacity`}>
+                      {analysisData.rhyme_scheme[lineIdx] || '·'}
+                    </span>
+                  </div>
+
+                  {/* Lyrics - SMALLER & CLEANER */}
+                  <div className="flex flex-wrap gap-y-2 items-baseline text-[0.92rem] leading-[1.8]">
                     {line.map((wordObj, wordIdx) => (
-                      <span key={wordIdx} style={{ display: 'inline-block' }}>
+                      <span key={wordIdx} className="inline-flex mr-[0.4rem] items-baseline">
                         {wordObj.syllable_parts && wordObj.syllable_parts.length > 0 ? (
-                          <>
-                            {wordObj.syllable_parts.map((syllable, sylIdx) => (
-                              <span
-                                key={sylIdx}
-                                style={{
-                                  color: syllable.color ? (darkMode ? '#000000' : '#FFFFFF') : (darkMode ? '#D1D5DB' : '#4B5563'),
-                                  fontWeight: syllable.color ? '600' : '400',
-                                  fontSize: '1.05rem',
-                                  backgroundColor: syllable.color || 'transparent',
-                                  padding: syllable.color ? '3px 4px' : '0',
-                                  borderRadius: syllable.color ? '3px' : '0',
-                                  boxShadow: syllable.color ? `0 0 20px ${syllable.color}80` : 'none',
-                                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                                  letterSpacing: '0.01em'
-                                }}
-                              >
-                                {syllable.text}
-                              </span>
-                            ))}
-                          </>
+                          wordObj.syllable_parts.map((syl, sIdx) => (
+                            <span
+                              key={sIdx}
+                              className="transition-colors duration-300"
+                              style={{
+                                backgroundColor: syl.color || 'transparent',
+                                color: syl.color ? '#000' : 'inherit',
+                                padding: syl.color ? '1px 3px' : '0',
+                                borderRadius: syl.color ? '2px' : '0',
+                                fontWeight: syl.color ? '500' : '400',
+                                // This ensures 'people' stays 'people' even with different colors
+                                marginLeft: '-0.2px', 
+                                marginRight: '-0.2px'
+                              }}
+                            >
+                              {syl.text}
+                            </span>
+                          ))
                         ) : (
-                          <span style={{
-                            color: darkMode ? '#D1D5DB' : '#4B5563',
-                            fontWeight: '400',
-                            fontSize: '1.05rem',
-                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                          }}>
-                            {wordObj.word}
-                          </span>
+                          <span className="opacity-80">{wordObj.word}</span>
                         )}
-                        {wordObj.punct && (
-                          <span style={{
-                            color: darkMode ? '#D1D5DB' : '#4B5563',
-                            fontWeight: '400',
-                            fontSize: '1.05rem'
-                          }}>
-                            {wordObj.punct}
-                          </span>
-                        )}
+                        {wordObj.punct && <span className="opacity-40">{wordObj.punct}</span>}
                       </span>
                     ))}
                   </div>
@@ -227,23 +170,15 @@ const LyricsAnalyzer = () => {
               ))}
             </div>
           </div>
-        )}
-
-        {/* Info Footer */}
-        {!analysisData && !loading && (
-          <div className={`${cardBg} rounded-xl p-8 shadow-2xl text-center border ${borderColor}`}>
-            <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-              <Music className="w-10 h-10 text-white" />
+        ) : (
+          !loading && (
+            <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-zinc-800/10 rounded-3xl opacity-20">
+              <Sparkles size={32} strokeWidth={1} />
+              <p className="mt-4 text-xs mono tracking-widest uppercase">Awaiting Input</p>
             </div>
-            <p className={`${textColor} mb-2 text-lg font-medium`}>
-              Enter a song title and artist name to analyze rhyme patterns
-            </p>
-            <p className={`${textSecondary} text-sm`}>
-              Powered by LRCLIB API & Syllable-based Phonetic Analysis
-            </p>
-          </div>
+          )
         )}
-      </div>
+      </main>
     </div>
   );
 };
