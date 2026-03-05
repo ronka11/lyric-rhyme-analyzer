@@ -1,180 +1,178 @@
 import React, { useState } from 'react';
-import { Search, Sparkles, AlertCircle, X, Moon, Sun } from 'lucide-react';
+import { Search, Mic, Moon, Sun, X, AlertCircle, BookOpen } from 'lucide-react';
 
-const LyricsAnalyzer = () => {
+const App = () => {
   const [darkMode, setDarkMode] = useState(true);
-  const [songTitle, setSongTitle] = useState('');
-  const [artistName, setArtistName] = useState('');
+  const [showIntro, setShowIntro] = useState(true);
+  const [song, setSong] = useState({ title: '', artist: '' });
+  const [suggestion, setSuggestion] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [analysisData, setAnalysisData] = useState(null);
+  const [error, setError] = useState(null);
+  const [data, setData] = useState(null);
 
-  const API_URL = 'http://127.0.0.1:8000';
-
-  const fetchLyrics = async () => {
-    const response = await fetch(
-      `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artistName)}&track_name=${encodeURIComponent(songTitle)}`
-    );
-    if (!response.ok) throw new Error('Track not found in database');
-    const data = await response.json();
-    return data.plainLyrics || data.syncedLyrics?.replace(/\[\d+:\d+\.\d+\]/g, '') || '';
+  const theme = {
+    bg: darkMode ? 'bg-[#0B0A0C]' : 'bg-[#FAF9FB]',
+    text: darkMode ? 'text-zinc-500' : 'text-stone-600',
+    heading: darkMode ? 'text-zinc-100' : 'text-indigo-950',
+    border: darkMode ? 'border-zinc-800' : 'border-purple-100',
+    card: darkMode ? 'bg-zinc-900/40' : 'bg-white shadow-md shadow-purple-900/5',
+    accent: 'purple-700', // Royal Purple
+    accentHover: 'purple-600'
   };
 
-  const analyzeLyrics = async (lyrics) => {
-    const response = await fetch(`${API_URL}/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lyrics }),
-    });
-    if (!response.ok) throw new Error('Analysis service unavailable');
-    return await response.json();
-  };
-
-  const handleAnalyze = async () => {
-    if (!songTitle.trim() || !artistName.trim()) {
-      setError('Enter both fields to begin');
-      return;
-    }
+  const handleSearch = async (overrideSong = null) => {
+    const target = overrideSong || song;
+    if (!target.title || !target.artist) return;
     setLoading(true);
-    setError('');
-    setAnalysisData(null);
+    setError(null);
+    setSuggestion(null);
+
     try {
-      const lyrics = await fetchLyrics();
-      const analysis = await analyzeLyrics(lyrics);
-      setAnalysisData(analysis);
-    } catch (err) {
-      setError(err.message);
+      const res = await fetch(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(target.artist)}&track_name=${encodeURIComponent(target.title)}`);
+      if (!res.ok) {
+        const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(target.title + ' ' + target.artist)}`);
+        const searchData = await searchRes.json();
+        if (searchData && searchData.length > 0) {
+          setSuggestion({ title: searchData[0].trackName, artist: searchData[0].artistName });
+          throw new Error("Track not found. Did you mean this?");
+        }
+        throw new Error("LRCLIB couldn't find this song. Check your spelling.");
+      }
+      const lrc = await res.json();
+      const lyrics = lrc.plainLyrics || lrc.syncedLyrics?.replace(/\[.*\]/g, '') || '';
+      const analysis = await fetch('http://127.0.0.1:8000/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lyrics }),
+      });
+      setData(await analysis.json());
+      if (overrideSong) setSong(overrideSong);
+    } catch (e) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => { if (e.key === 'Enter') handleAnalyze(); };
-
-  // --- Theme Configuration ---
-  const theme = {
-    bg: darkMode ? 'bg-[#09090B]' : 'bg-[#FAFAFA]',
-    text: darkMode ? 'text-zinc-400' : 'text-zinc-600',
-    heading: darkMode ? 'text-zinc-100' : 'text-zinc-900',
-    border: darkMode ? 'border-zinc-800' : 'border-zinc-200',
-    card: darkMode ? 'bg-zinc-900/40' : 'bg-white',
-    input: darkMode ? 'bg-zinc-900/60' : 'bg-white',
-    scheme: darkMode ? 'text-zinc-600' : 'text-zinc-400',
-  };
-
   return (
-    <div className={`min-h-screen ${theme.bg} ${theme.text} transition-colors duration-500`}>
-      {/* Premium Typography: Geist Sans & Geist Mono */}
+    <div className={`min-h-screen ${theme.bg} ${theme.text} transition-all duration-700 selection:bg-purple-500/30`}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap');
-        body { font-family: 'Geist', sans-serif; letter-spacing: -0.01em; }
-        .mono { font-family: 'Geist Mono', monospace; }
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap');
+        .serif { font-family: 'Crimson Pro', serif; }
+        .sans { font-family: 'Inter', sans-serif; }
+        .syllable-row { display: inline-flex; flex-direction: row; align-items: baseline; gap: 0; }
       `}</style>
 
-      {/* Nav */}
-      <nav className={`border-b ${theme.border} sticky top-0 z-50 backdrop-blur-xl transition-colors`}>
-        <div className="max-w-5xl mx-auto px-8 h-14 flex items-center justify-between">
-          <span className={`text-[11px] mono uppercase tracking-[0.2em] font-semibold ${theme.heading}`}>
-            Rhyme Engine <span className="text-zinc-500 opacity-50">v2.0</span>
-          </span>
-          <button 
-            onClick={() => setDarkMode(!darkMode)}
-            className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-200'}`}
-          >
-            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+      {/* Preface with New Heading */}
+      {showIntro && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/70 backdrop-blur-md animate-in fade-in duration-500">
+          <div className={`${darkMode ? 'bg-[#121114]' : 'bg-white'} max-w-xl w-full p-12 rounded-[2rem] border ${theme.border} shadow-2xl relative`}>
+            <button onClick={() => setShowIntro(false)} className="absolute top-8 right-8 opacity-40 hover:opacity-100"><X size={20}/></button>
+            <div className="mb-8 text-purple-600"><BookOpen size={32} /></div>
+            <h2 className={`text-4xl serif italic mb-2 ${theme.heading}`}>Lyrics Rhymer Analyzer</h2>
+            <p className="sans text-[10px] uppercase tracking-[0.3em] mb-8 text-purple-500 font-bold">The Preface</p>
+            <div className="space-y-4 serif text-lg leading-relaxed opacity-90">
+              <p>This engine is designed to visualize the phonetic geometry of musical lyrics. It retrieves manuscripts from the LRCLIB database and applies complex mathematical phonology to map internal rhymes.</p>
+              <p>Note that language is fluid; artists often slant their pronunciations to fit a specific scheme. Because of this, the analysis may not be 100% perfect, as it struggles to account for individual artistic inflection.</p>
+            </div>
+            <button 
+              onClick={() => setShowIntro(false)}
+              className="mt-10 w-full py-4 rounded-xl bg-purple-800 hover:bg-purple-700 text-purple-50 sans font-medium transition-all shadow-lg shadow-purple-900/20"
+            >
+              Begin Analysis
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Nav with New Icon and Name */}
+      <nav className={`h-24 flex items-center px-12 justify-between border-b ${theme.border}`}>
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-2xl bg-purple-600/10 flex items-center justify-center text-purple-600"><Mic size={20}/></div>
+          <span className={`serif text-2xl font-semibold tracking-tighter ${theme.heading}`}>Lyrics Rhymer Analyzer</span>
+        </div>
+        <div className="flex items-center gap-8">
+          <button onClick={() => setShowIntro(true)} className="sans text-[10px] font-bold uppercase tracking-widest hover:text-purple-600 transition-colors">Preface</button>
+          <button onClick={() => setDarkMode(!darkMode)} className="p-2 opacity-40 hover:opacity-100">
+            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
           </button>
         </div>
       </nav>
 
-      <main className="max-w-5xl mx-auto px-8 py-12">
-        {/* Input Bar - Focused & Minimal */}
-        <div className="max-w-2xl mx-auto mb-16">
-          <div className={`flex flex-col sm:flex-row gap-0 border ${theme.border} rounded-xl overflow-hidden shadow-sm transition-all focus-within:ring-1 focus-within:ring-zinc-500`}>
+      <main className="max-w-5xl mx-auto px-6 py-20">
+        {/* Search */}
+        <div className="max-w-2xl mx-auto mb-20 text-center">
+          <div className={`flex flex-col md:flex-row border ${theme.border} rounded-2xl overflow-hidden ${theme.card}`}>
             <input 
-              className={`flex-1 ${theme.input} p-4 text-sm outline-none border-b sm:border-b-0 sm:border-r ${theme.border} ${theme.heading}`}
-              placeholder="Track Title" 
-              value={songTitle}
-              onChange={(e) => setSongTitle(e.target.value)}
-              onKeyDown={handleKeyPress}
+              className={`flex-1 ${theme.bg} p-5 sans outline-none ${theme.heading}`}
+              placeholder="Song title..." value={song.title} onChange={e => setSong({...song, title: e.target.value})}
             />
             <input 
-              className={`flex-1 ${theme.input} p-4 text-sm outline-none ${theme.heading}`}
-              placeholder="Artist" 
-              value={artistName}
-              onChange={(e) => setArtistName(e.target.value)}
-              onKeyDown={handleKeyPress}
+              className={`flex-1 ${theme.bg} p-5 sans outline-none border-t md:border-t-0 md:border-l ${theme.border} ${theme.heading}`}
+              placeholder="Artist..." value={song.artist} onChange={e => setSong({...song, artist: e.target.value})}
             />
-            <button 
-              onClick={handleAnalyze}
-              disabled={loading}
-              className={`px-8 py-4 text-sm font-medium transition-all ${darkMode ? 'bg-zinc-100 text-zinc-900 hover:bg-white' : 'bg-zinc-900 text-white hover:bg-black'} disabled:opacity-50`}
-            >
-              {loading ? '...' : 'Analyze'}
+            <button onClick={() => handleSearch()} disabled={loading} className="bg-purple-800 hover:bg-purple-700 text-purple-50 px-10 py-5 transition-colors">
+              {loading ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"/> : <Search size={22}/>}
             </button>
           </div>
-          {error && <p className="mt-4 text-xs text-red-500 text-center mono">{error}</p>}
+
+          {error && (
+            <div className="mt-8 animate-in slide-in-from-top-2">
+              <div className="flex justify-center items-center gap-2 text-red-500/80 sans text-sm italic">
+                <AlertCircle size={14} /> <span>{error}</span>
+              </div>
+              {suggestion && (
+                <button 
+                  onClick={() => handleSearch(suggestion)}
+                  className="mt-4 px-6 py-2 rounded-full border border-purple-200 text-purple-700 serif text-lg hover:bg-purple-50 transition-all"
+                >
+                  Did you mean <span className="font-bold italic">{suggestion.title}</span> by <span className="font-bold italic">{suggestion.artist}</span>?
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Results - WIDER WINDOW */}
-        {analysisData ? (
+        {/* Output */}
+        {data ? (
           <div className="animate-in fade-in duration-1000">
-            <header className="mb-12 border-b border-zinc-800/10 pb-6 flex justify-between items-end">
-              <div>
-                <h2 className={`text-2xl font-medium ${theme.heading}`}>{songTitle}</h2>
-                <p className="text-sm opacity-60">{artistName}</p>
-              </div>
-              <div className="text-[10px] mono uppercase tracking-widest opacity-40">Phonetic Scheme</div>
-            </header>
+            <div className="text-center mb-24">
+              <h1 className={`text-6xl serif italic font-light mb-3 ${theme.heading}`}>{song.title}</h1>
+              <p className="sans uppercase tracking-[0.5em] text-[10px] opacity-40">{song.artist}</p>
+            </div>
 
-            <div className="space-y-4">
-              {analysisData.highlighted_lyrics.map((line, lineIdx) => (
-                <div key={lineIdx} className="flex gap-8 group transition-all">
-                  {/* Scheme Indicator */}
-                  <div className={`w-6 text-right shrink-0 select-none pt-1`}>
-                    <span className={`text-[10px] mono font-bold ${theme.scheme} opacity-40 group-hover:opacity-100 transition-opacity`}>
-                      {analysisData.rhyme_scheme[lineIdx] || '·'}
-                    </span>
-                  </div>
-
-                  {/* Lyrics - SMALLER & CLEANER */}
-                  <div className="flex flex-wrap gap-y-2 items-baseline text-[0.92rem] leading-[1.8]">
-                    {line.map((wordObj, wordIdx) => (
-                      <span key={wordIdx} className="inline-flex mr-[0.4rem] items-baseline">
-                        {wordObj.syllable_parts && wordObj.syllable_parts.length > 0 ? (
-                          wordObj.syllable_parts.map((syl, sIdx) => (
-                            <span
-                              key={sIdx}
-                              className="transition-colors duration-300"
-                              style={{
-                                backgroundColor: syl.color || 'transparent',
-                                color: syl.color ? '#000' : 'inherit',
-                                padding: syl.color ? '1px 3px' : '0',
-                                borderRadius: syl.color ? '2px' : '0',
-                                fontWeight: syl.color ? '500' : '400',
-                                // This ensures 'people' stays 'people' even with different colors
-                                marginLeft: '-0.2px', 
-                                marginRight: '-0.2px'
-                              }}
-                            >
-                              {syl.text}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="opacity-80">{wordObj.word}</span>
-                        )}
-                        {wordObj.punct && <span className="opacity-40">{wordObj.punct}</span>}
-                      </span>
-                    ))}
-                  </div>
+            <div className="space-y-6 max-w-2xl mx-auto text-center">
+              {data.highlighted_lyrics.map((line, lIdx) => (
+                <div key={lIdx} className="flex flex-wrap gap-x-2 gap-y-3 justify-center">
+                  {line.map((wordObj, wIdx) => (
+                    <div key={wIdx} className="syllable-row">
+                      {wordObj.syllable_parts.map((syl, sIdx) => (
+                        <span
+                          key={sIdx}
+                          style={{
+                            // Higher opacity and bolder colors in Light Mode for visibility
+                            color: syl.color || 'inherit',
+                            backgroundColor: syl.color ? (darkMode ? `${syl.color}15` : `${syl.color}25`) : 'transparent',
+                            borderBottom: syl.color ? `2px solid ${syl.color}${darkMode ? '40' : '90'}` : 'none',
+                            fontWeight: syl.color ? '600' : '400'
+                          }}
+                          className="serif text-xl px-[1px] transition-all duration-700"
+                        >
+                          {syl.text}
+                        </span>
+                      ))}
+                      {wordObj.punct && <span className="opacity-30 serif text-xl">{wordObj.punct}</span>}
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
           </div>
         ) : (
           !loading && (
-            <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-zinc-800/10 rounded-3xl opacity-20">
-              <Sparkles size={32} strokeWidth={1} />
-              <p className="mt-4 text-xs mono tracking-widest uppercase">Awaiting Input</p>
+            <div className="h-64 flex flex-col items-center justify-center opacity-10">
+              <Mic size={64} strokeWidth={0.5} className="text-purple-600" />
+              <p className="mt-6 serif italic text-xl tracking-[0.2em]">Awaiting the manuscript...</p>
             </div>
           )
         )}
@@ -183,4 +181,4 @@ const LyricsAnalyzer = () => {
   );
 };
 
-export default LyricsAnalyzer;
+export default App;
