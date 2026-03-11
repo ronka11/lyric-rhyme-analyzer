@@ -7,6 +7,8 @@ from collections import defaultdict
 from typing import Dict, List, Any
 import pronouncing
 from functools import lru_cache
+from fastapi.staticfiles import StaticFiles
+import os
 
 # Concise logging for tracking analysis flow
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
@@ -156,3 +158,9 @@ class Song:
 @app.post("/analyze", response_model=RhymeResponse)
 async def analyze_lyrics(request: LyricsRequest):
     return Song(request.lyrics).analyze()
+
+
+
+static_dir = os.path.join(os.path.dirname(__file__), "frontend_dist")
+if os.path.exists(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")

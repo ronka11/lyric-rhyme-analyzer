@@ -40,7 +40,8 @@ const App = () => {
       }
       const lrc = await res.json();
       const lyrics = lrc.plainLyrics || lrc.syncedLyrics?.replace(/\[.*\]/g, '') || '';
-      const analysis = await fetch('http://127.0.0.1:8000/analyze', {
+      // const analysis = await fetch('http://127.0.0.1:8000/analyze', {
+      const analysis = await fetch(`${process.env.REACT_APP_API_URL}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lyrics }),

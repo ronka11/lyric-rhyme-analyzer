@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+
+  app:
+    build: .                        # Build from Dockerfile in current directory
+    container_name: lyrics-analyzer
+    restart: unless-stopped         # Auto-restart if it crashes or RPi reboots
+    ports:
+      - "8000:8000"                 # host:container — also lets you test at localhost:8000
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}   # Read from .env file
+    depends_on:
+      - app                         # Wait for app to start first
